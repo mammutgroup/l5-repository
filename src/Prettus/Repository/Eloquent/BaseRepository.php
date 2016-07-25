@@ -327,7 +327,33 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryCriteria
         $results->appends(request()->query());
         $this->resetModel();
 
-        return $this->parserResult($results);
+
+        $data = $this->parserResult($results);
+
+        $total = $data['meta']['pagination']['total'];
+        $current_page = $data['meta']['pagination']['current_page'];
+        $per_page = $data['meta']['pagination']['per_page'];
+        $total_pages = $data['meta']['pagination']['total_pages'];
+        $last_page = (int)substr($data['links']['last'], strpos($data['links']['last'], 'page=') + 5);
+        $next_page = $current_page  < $total_pages ? '/?page=' . ($current_page + 1) . '&perPage=' . $per_page : '';
+        $prev_page = $current_page > 1 ? '/?page=' . ($current_page - 1) .  '&perPage=' . $per_page: '';
+        $from = $current_page * $per_page - ($per_page-1);
+        $to = $current_page * $per_page - ($per_page-1) + $data['meta']['pagination']['count'] - 1;
+
+        $meta = [
+            "total"			=>  $total,
+            "per_page"		=>  $per_page,
+            "current_page"	=>  $current_page,
+            "last_page"		=>  $last_page,
+            "next_page_url"	=>  $next_page,
+            "prev_page_url"	=>  $prev_page,
+            "from"			=>  $from,
+            "to"			=>  $to
+        ];
+        $data['meta'] = $meta;
+        unset($data['links']);
+
+        return $data;
     }
 
     /**
