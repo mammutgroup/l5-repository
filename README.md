@@ -1153,3 +1153,88 @@ $this->repository->skipPresenter();
 
 $posts = $this->repository->all();
 ```
+
+## Route Criteria supported on version 2.5.5
+### now you can add this configs to any route 
+
+```php
+ $api->get('', [
+     \\...,
+      'criterion' => [
+        'CriteriaName'=>'RepositoryName'
+      ],
+]);
+```
+
+#### if you want to apply a criteria to all repositories
+
+```php
+ $api->get('', [
+     \\...,
+      'criterion' => [
+        'CriteriaName' => '*'
+      ]
+]);
+```
+
+#### if you want to apply a criteria on only one repository
+
+```php
+ $api->get('', [
+     \\...,
+      'criterion' => [
+        'CriteriaName'=>'RepositoryName'
+      ]
+]);
+```
+
+
+#### if you want to apply any criteria to all repositories except a repository
+
+```php
+ $api->get('', [
+     \\...,
+      'criterion' => [
+        'CriteriaName' => [
+          'except'=>'RepositoryName'
+        ]
+      ]
+]);
+```
+
+#### if you want to apply any criteria to all repositories except some repositories
+
+```php
+ $api->get('', [
+     \\...,
+      'criterion' => [
+        'CriteriaName'=> [
+          'except' => [
+            'RepositoryName1',
+            'RepositoryName2'
+          ]
+        ]
+      ]
+]);
+```
+
+#### if you want to apply a criteria to any repository with a condition
+> in this case you can use a function that this function takes 3 parameter:
+>  $repository: this param give an instance of current repository that this criteria wants to apply on it
+>  $currentUser give you \Auth::user()
+>  $app give you app()
+
+```php
+ $api->get('', [
+     \\...,
+      'criterion' => [
+        'CriteriaName'=> function($repository, $currentUser, $app){
+          if(1 == 1){
+            return true;
+          }
+
+          return false;
+        }
+      ]
+]);
+```
