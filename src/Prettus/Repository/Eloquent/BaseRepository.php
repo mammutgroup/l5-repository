@@ -1,6 +1,7 @@
 <?php
 namespace Prettus\Repository\Eloquent;
 
+use Aber\Exceptions\NotCallableException;
 use Closure;
 use Exception;
 use Illuminate\Container\Container as Application;
@@ -255,7 +256,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryCriteria
     /**
      * Retrieve data array for populate field select
      *
-     * @param string      $column
+     * @param string $column
      * @param string|null $key
      *
      * @return \Illuminate\Support\Collection|array
@@ -312,8 +313,8 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryCriteria
     /**
      * Retrieve all data of repository, paginated
      *
-     * @param null   $limit
-     * @param array  $columns
+     * @param null $limit
+     * @param array $columns
      * @param string $method
      *
      * @return mixed
@@ -326,7 +327,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryCriteria
         $results = $this->model->{$method}($limit, $columns);
         $results->appends(request()->query());
         $this->resetModel();
-        
+
         $data = $this->parserResult($results);
         return $data;
     }
@@ -334,7 +335,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryCriteria
     /**
      * Retrieve all data of repository, simple paginated
      *
-     * @param null  $limit
+     * @param null $limit
      * @param array $columns
      *
      * @return mixed
@@ -646,7 +647,7 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryCriteria
     public function pushCriteria($criteria)
     {
         if (is_string($criteria)) {
-            $criteria = new $criteria;
+            $criteria = app($criteria);
         }
         if (!$criteria instanceof CriteriaInterface) {
             throw new RepositoryException("Class " . get_class($criteria) . " must be an instance of Prettus\\Repository\\Contracts\\CriteriaInterface");
@@ -760,6 +761,100 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryCriteria
     }
 
     /**
+     * apply route criteria to this repository if is apply able
+     * @throws RepositoryException
+     */
+    protected function applyRouteCriteria()
+    {
+
+//                \Aber\Repositories\Criteria\AgencyCriteria::class=>[
+//                    'except'=>\Aber\Repositories\Eloquent\VehicleRepositoryEloquent::class
+//                ],
+//                \Aber\Repositories\Criteria\AgencyCriteria::class=>[
+//                    'except'=>[\Aber\Repositories\Eloquent\VehicleRepositoryEloquent::class]
+//                ]
+
+
+        if ($route = request()->route()) {
+            $actions = $route->getAction();
+            if (!empty($actions['criterion'])) {
+                $currentRepo = get_class($this);
+                foreach ($actions['criterion'] as $criteria => $repositories) {
+                    if (is_int($criteria)) { // support only name
+                        $criteria = $repositories;
+                        $repositories = '*';
+                    }
+
+                    // \Aber\Repositories\Criteria\AgencyCriteria::class => '*',
+                    // \Aber\Repositories\Criteria\AgencyCriteria::class => [],
+                    if ($repositories === '*' || empty($repositories)) { // 'criteriaName' => '*' or 'criteriaName' => []
+                        $this->pushCriteria($criteria);
+                        continue;
+                    }
+
+                    // \Aber\Repositories\Criteria\AgencyCriteria::class=>\Aber\Repositories\Eloquent\MyRepositoryEloquent::class
+                    if (is_string($repositories) && $currentRepo === $repositories) { // if 'criteriaName' => 'repositoryName'
+                        $this->pushCriteria($criteria);
+                        continue;
+                    }
+
+                    if (is_array($repositories)) {
+                        if (key_exists('except', $repositories)) {
+                            $except = array_pull($repositories, 'except');
+
+                            // \Aber\Repositories\Criteria\AgencyCriteria::class=>[
+                            //      'except'=>\Aber\Repositories\Eloquent\MyRepositoryEloquent::class
+                            // ],
+                            if (is_string($except) && $currentRepo !== $except) {// 'criteriaName' => ['expect' => 'repositoryName']
+                                $this->pushCriteria($criteria);
+                            }
+
+                            // \Aber\Repositories\Criteria\AgencyCriteria::class=>[
+                            //      'except'=>[\Aber\Repositories\Eloquent\MyRepositoryEloquent::class]
+                            // ],
+                            else if (is_array($except) && !$this->routeCriteriaCheckCondition($currentRepo, $except)) { //'criteriaName' => ['expect' => ['xRepository', 'yRepository', 'zRepository', ...]]
+                                $this->pushCriteria($criteria);
+                            }
+                            continue;
+                        }
+
+                        // \Aber\Repositories\Criteria\AgencyCriteria::class => [\Aber\Repositories\Eloquent\MyRepositoryEloquent::class]
+                        if ($this->routeCriteriaCheckCondition($currentRepo, $repositories)) {//'criteriaName' => ['xRepository', 'yRepository', 'zRepository', ...]
+                            $this->pushCriteria($criteria);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    protected function routeCriteriaCheckCondition($repositoryName, $repositories)
+    {
+        foreach ($repositories as $key => $repository) {
+            if (!is_int($key)) {
+                $method = $repository;
+                $repository = $key;
+            }
+
+            if (isset($method)) {
+                if (!is_callable($method)) {
+                    throw new NotCallableException;
+                }
+
+                if ($key === '*' || $key === $repositoryName) {
+                    return $method($this, \Auth::user(), $this->app);
+                }
+            }
+
+            if ($repository === '*' || $repository === $repositoryName) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Apply criteria in current Query
      *
      * @return $this
@@ -770,6 +865,8 @@ abstract class BaseRepository implements RepositoryInterface, RepositoryCriteria
         if ($this->skipCriteria === true) {
             return $this;
         }
+
+        $this->applyRouteCriteria();
 
         $criteria = $this->getCriteria();
 
